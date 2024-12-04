@@ -1,4 +1,3 @@
-// Import dependencies
 import express, { Request, Response } from "express";
 import path from "path";
 import multer from "multer";
@@ -16,11 +15,18 @@ const uploadsDir = path.join(__dirname, "../../uploads");
 console.log("Upload:", uploadsDir);
 
 // Middleware to serve static files
-router.use("/uploads", express.static(uploadsDir, 
-  { setHeaders: (res) => { res.setHeader("Cache-Control", "no-store"); 
-    res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data:;"); 
-  }, 
-}));
+router.use(
+  "/uploads",
+  express.static(uploadsDir, {
+    setHeaders: (res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data:;"
+      );
+    },
+  })
+);
 
 // Ensure the uploads directory exists
 if (!fs.existsSync(uploadsDir)) {
@@ -30,13 +36,20 @@ if (!fs.existsSync(uploadsDir)) {
 // Multer configuration for file storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
+  filename: (req, file, cb) =>
+    cb(null, Date.now() + path.extname(file.originalname)),
 });
 
 // Filter for image files only
-const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const fileFilter = (
+  req: Request,
+  file: Express.Multer.File,
+  cb: multer.FileFilterCallback
+) => {
   const allowedTypes = /jpeg|jpg|png|gif/;
-  const isValid = allowedTypes.test(path.extname(file.originalname).toLowerCase()) && allowedTypes.test(file.mimetype);
+  const isValid =
+    allowedTypes.test(path.extname(file.originalname).toLowerCase()) &&
+    allowedTypes.test(file.mimetype);
 
   if (!isValid) {
     cb(new Error("Only JPEG, JPG, PNG, and GIF are allowed."));
@@ -46,56 +59,79 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
 };
 
 // Set up multer
-const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } });
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 // Middleware for authentication and logging
 router.use(verifyToken, logRequestDetails);
 
-
 // Route to create a product
-router.post("/create", upload.array("images", 5), async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { productname, description, price, stock } = req.body;
-    const uploadedFiles = req.files as Express.Multer.File[];
-    const imagePaths = uploadedFiles.map((file) => `uploads/${file.filename}`);
+router.post(
+  "/create",
+  upload.array("images", 5),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { productname, description, price, stock } = req.body;
+      const uploadedFiles = req.files as Express.Multer.File[];
+      const imagePaths = uploadedFiles.map(
+        (file) => `uploads/${file.filename}`
+      );
 
-    if (!productname || !description || !price || stock === undefined) {
-      res.status(400).json({ message: "Missing required fields" });
-      return;
+      if (!productname || !description || !price || stock === undefined) {
+        res.status(400).json({ message: "Missing required fields" });
+        return;
+      }
+
+      const newProduct = new ProductModel({
+        productname,
+        description,
+        price: parseFloat(price),
+        images: imagePaths,
+        stock,
+      });
+
+      await newProduct.save();
+      res.status(201).json({ message: "Product created", product: newProduct });
+    } catch (error) {
+      console.error("Error creating product:", error);
+      res
+        .status(500)
+        .json({
+          message: "Server error",
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
     }
-
-    const newProduct = new ProductModel({
-      productname,
-      description,
-      price: parseFloat(price),
-      images: imagePaths,
-      stock,
-    });
-
-    await newProduct.save();
-    res.status(201).json({ message: "Product created", product: newProduct });
-  } catch (error) {
-    console.error("Error creating product:", error);
-    res.status(500).json({ message: "Server error", error: error instanceof Error ? error.message : "Unknown error" });
   }
-});
-
+);
 
 // Route to get all products
-router.get("/", async (req: Request, res: Response): Promise<void> => { 
-  try { const products = await ProductModel.find(); 
-    console.log("Products with image URLs:", products); 
-    const productsWithImages = products.map(product => ({ ...product.toObject(), 
-      imageUrls: product.images.map(imagePath => {
-         const imageUrl = `http://localhost:5000/uploads/${path.basename(imagePath)}`;
-          console.log("Generated image URL:", imageUrl); return imageUrl; 
-        }),
-         })); res.status(200).json(productsWithImages);
-         }
-          catch (error) { console.error("Error fetching products:", error); 
-            res.status(500).json({ message: "Server error", 
-              error: error instanceof Error ? error.message : "Unknown error" });
-           } 
+router.get("/", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const products = await ProductModel.find();
+    console.log("Products with image URLs:", products);
+    const productsWithImages = products.map((product) => ({
+      ...product.toObject(),
+      imageUrls: product.images.map((imagePath) => {
+        const imageUrl = `http://localhost:5000/uploads/${path.basename(
+          imagePath
+        )}`;
+        console.log("Generated image URL:", imageUrl);
+        return imageUrl;
+      }),
+    }));
+    res.status(200).json(productsWithImages);
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    res
+      .status(500)
+      .json({
+        message: "Server error",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+  }
 });
 
 // Update a Product
@@ -108,10 +144,8 @@ router.put(
       const productId = req.params.id;
       let imagePaths: string[] = [];
 
-      if (req.files && Array.isArray(req.files)) {
-        imagePaths = (req.files as Express.Multer.File[]).map(
-          (file) => `/uploads/${file.filename}`
-        );
+      if (Array.isArray(req.files)) {
+        imagePaths = req.files.map((file) => `/uploads/${file.filename}`);
       }
 
       if (req.body.images && Array.isArray(req.body.images)) {
@@ -232,7 +266,7 @@ router.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { to, subject, product, attachmentFilePaths } = req.body;
-      if (!product || !product.productname) {
+      if (!product?.productname) {
         res.status(400).json({ message: "Product data is missing" });
         return;
       }

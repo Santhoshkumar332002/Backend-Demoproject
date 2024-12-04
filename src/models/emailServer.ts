@@ -70,7 +70,7 @@ export const sendEmail = async (
   attachmentFilePaths?: string[]
 ): Promise<void> => {
   // Validate product data
-  if (!product || !product.productname || !product.price) {
+  if (!(product?.productname && product?.price)) {
     throw new Error('Product data is incomplete or invalid.');
   }
 
